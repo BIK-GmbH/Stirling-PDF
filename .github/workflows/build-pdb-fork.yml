@@ -61,14 +61,22 @@ jobs:
       - name: Make package public
         # Railway pulls images without authentication, so the package
         # has to be public. GHCR creates new packages as private by
-        # default; this step flips the flag idempotently. GITHUB_TOKEN
-        # has packages:write inside the workflow even when the user's
-        # local PAT does not.
+        # default; this step flips the flag idempotently.
+        # We use a PAT (PACKAGES_PAT secret) because the workflow's
+        # GITHUB_TOKEN does not have visibility-management scope by
+        # default, even with packages:write permissions block.
+        # If the secret is not configured, the step logs but doesn't
+        # fail — the maintainer can flip visibility via UI once.
         run: |
-          curl -sS -X PATCH \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/orgs/BIK-GmbH/packages/container/stirling-pdf-pdb" \
-            -d '{"visibility":"public"}' \
-            && echo "package visibility: public"
+          if [ -n "${{ secrets.PACKAGES_PAT }}" ]; then
+            curl -sS -X PATCH \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.PACKAGES_PAT }}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/orgs/BIK-GmbH/packages/container/stirling-pdf-pdb" \
+              -d '{"visibility":"public"}' \
+              && echo "package visibility: public"
+          else
+            echo "PACKAGES_PAT secret not set — flip ghcr package visibility manually once via:"
+            echo "  https://github.com/orgs/BIK-GmbH/packages/container/stirling-pdf-pdb/settings"
+          fi
