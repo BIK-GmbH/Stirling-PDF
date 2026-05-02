@@ -57,3 +57,18 @@ jobs:
           build-args: |
             VERSION_TAG=pdb-${{ github.sha }}
             PROTOTYPES_BUILD=false
+
+      - name: Make package public
+        # Railway pulls images without authentication, so the package
+        # has to be public. GHCR creates new packages as private by
+        # default; this step flips the flag idempotently. GITHUB_TOKEN
+        # has packages:write inside the workflow even when the user's
+        # local PAT does not.
+        run: |
+          curl -sS -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/orgs/BIK-GmbH/packages/container/stirling-pdf-pdb" \
+            -d '{"visibility":"public"}' \
+            && echo "package visibility: public"
