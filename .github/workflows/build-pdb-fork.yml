@@ -1,0 +1,59 @@
+name: Build BIK PDB fork → ghcr.io
+
+# Builds the embedded Stirling-PDF image with the BIK postMessage save-
+# hook patch (see frontend/src/core/services/downloadService.ts) and
+# pushes it to ghcr.io/bik-gmbh/stirling-pdf-pdb. The Railway
+# stirling-pdf service consumes that image, so a push here triggers
+# a Railway redeploy via the standard image-tag-watch mechanism.
+#
+# Trigger: any push to feat/postmessage-save-callback OR manual via
+# workflow_dispatch.
+
+on:
+  push:
+    branches:
+      - feat/postmessage-save-callback
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push embedded image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/embedded/Dockerfile
+          # amd64 only — Railway runs on amd64, multi-arch would double
+          # the build time without business value here.
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/bik-gmbh/stirling-pdf-pdb:latest
+            ghcr.io/bik-gmbh/stirling-pdf-pdb:${{ github.sha }}
+          # Layer-cache via the registry — first build is slow (~15 min),
+          # subsequent ones reuse most layers and finish in 3-5 min.
+          cache-from: type=registry,ref=ghcr.io/bik-gmbh/stirling-pdf-pdb:buildcache
+          cache-to: type=registry,ref=ghcr.io/bik-gmbh/stirling-pdf-pdb:buildcache,mode=max
+          build-args: |
+            VERSION_TAG=pdb-${{ github.sha }}
+            PROTOTYPES_BUILD=false
