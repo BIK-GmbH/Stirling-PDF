@@ -43,6 +43,11 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
     typeof window !== "undefined" && window !== window.parent;
   const requestIdRef = useRef<string | null>(null);
   const [drivePicking, setDrivePicking] = useState(false);
+  // Wrapper-Ref ums FileInput, damit wir programmatisch das native
+  // <input type=file> finden und ein synthetic change-event feuern
+  // können. So bekommt Mantine den File via dem normalen Picker-Pfad
+  // und der Filename wird genauso angezeigt wie beim manuellen Klick.
+  const fileInputWrapperRef = useRef<HTMLDivElement>(null);
 
   const processImage = async (
     imageSource: File | string,
@@ -330,11 +335,33 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           { type: data.mimeType || "image/png" },
         );
         // eslint-disable-next-line no-console
-        console.log(
-          "[stirling drive-pick] feeding file into handleImageChange:",
-          { name: file.name, type: file.type, size: file.size },
-        );
-        void handleImageChange(file);
+        console.log("[stirling drive-pick] injecting file into native input:", {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        });
+        // Native HTML <input type=file> in unserem Wrapper finden und
+        // programmatisch befüllen. Das löst Mantines internes onChange-
+        // Handling aus → identischer Pfad wie beim manuellen Picker.
+        const nativeInput = fileInputWrapperRef.current?.querySelector(
+          'input[type="file"]',
+        ) as HTMLInputElement | null;
+        if (nativeInput) {
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          nativeInput.files = dt.files;
+          nativeInput.dispatchEvent(new Event("change", { bubbles: true }));
+          // eslint-disable-next-line no-console
+          console.log(
+            "[stirling drive-pick] dispatched change on native input ✓",
+          );
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn(
+            "[stirling drive-pick] native input not found, falling back to handleImageChange",
+          );
+          void handleImageChange(file);
+        }
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn("[stirling drive-pick] file build failed:", e);
@@ -371,17 +398,19 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   return (
     <Stack gap="sm">
       <PrivateContent>
-        <FileInput
-          label={label}
-          placeholder={
-            placeholder || t("sign.image.placeholder", "Select image file")
-          }
-          accept="image/*,.svg"
-          value={currentFile}
-          onChange={handleImageChange}
-          disabled={disabled || isProcessing}
-          clearable
-        />
+        <div ref={fileInputWrapperRef}>
+          <FileInput
+            label={label}
+            placeholder={
+              placeholder || t("sign.image.placeholder", "Select image file")
+            }
+            accept="image/*,.svg"
+            value={currentFile}
+            onChange={handleImageChange}
+            disabled={disabled || isProcessing}
+            clearable
+          />
+        </div>
       </PrivateContent>
       {isEmbedded && (
         <Group gap="xs">
