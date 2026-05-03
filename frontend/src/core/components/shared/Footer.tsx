@@ -25,6 +25,16 @@ export default function Footer({
   const { t } = useTranslation();
   const { footerInfo } = useFooterInfo();
 
+  // BIK fork: im Iframe-Embed wird Stirling als reines Editor-Tool
+  // präsentiert. Eigene Footer-Links (Survey/Privacy/Terms/Discord/
+  // GitHub/Accessibility) gehören der Host-App, nicht uns — also
+  // komplett ausblenden wenn embedded.
+  const isEmbedded =
+    typeof window !== "undefined" && window !== window.parent;
+  if (isEmbedded) {
+    return null;
+  }
+
   // Use props if provided, otherwise fall back to fetched footer info
   const finalAnalyticsEnabled =
     analyticsEnabled ?? footerInfo?.analyticsEnabled ?? false;

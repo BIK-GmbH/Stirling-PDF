@@ -1,6 +1,7 @@
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { RainbowThemeProvider } from "@app/components/shared/RainbowThemeProvider";
 import { FileContextProvider, useFileContext } from "@app/contexts/FileContext";
+import { useFileState } from "@app/contexts/file/fileHooks";
 import { NavigationProvider } from "@app/contexts/NavigationContext";
 import { ToolRegistryProvider } from "@app/contexts/ToolRegistryProvider";
 import { FilesModalProvider } from "@app/contexts/FilesModalContext";
@@ -67,7 +68,72 @@ function AppInitializer() {
  * No-op wenn nicht im iframe (window === window.parent).
  */
 function EmbedderBridge() {
-  const { actions } = useFileContext();
+  const { actions, selectors } = useFileContext();
+  const { state } = useFileState();
+
+  // Auto-Save-Watcher: Sobald der aktive File sich ändert (z.B. nach
+  // "Bilder anwenden" produziert createStampTool via consumeFiles eine
+  // neue Version), schicken wir die Bytes via stirling:save an den
+  // Embedder. So muss der User nicht mehr auf "Download" klicken —
+  // der Speichern-Status oben in der PDB-Toolbar springt automatisch
+  // auf "Gespeichert vor Xs".
+  //
+  // Wir skippen die initiale stirling:load-Aktivierung (sonst saven
+  // wir die Datei, die wir gerade selbst geladen haben).
+  const lastSeenFileIdRef = useRef<string | null>(null);
+  const initializedRef = useRef(false);
+  const selectedIds = state.ui.selectedFileIds;
+  const activeFileId = selectedIds.length === 1 ? selectedIds[0] : null;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window === window.parent) return; // standalone, kein Embed
+    if (!activeFileId) return;
+
+    // First active file = our initial stirling:load → don't auto-save it
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      lastSeenFileIdRef.current = activeFileId;
+      return;
+    }
+    // Same file (no version bump) — nothing to save
+    if (lastSeenFileIdRef.current === activeFileId) return;
+
+    const file = selectors.getFile(activeFileId);
+    if (!file) return;
+
+    lastSeenFileIdRef.current = activeFileId;
+
+    // Bytes lesen + an Parent posten. Async, aber Listener bleibt
+    // beim Watcher-Tick reaktiv für die nächste Änderung.
+    void (async () => {
+      try {
+        const buf = await file.arrayBuffer();
+        const filename = file.name || "edited.pdf";
+        const mimeType = file.type || "application/pdf";
+        // eslint-disable-next-line no-console
+        console.log("[stirling embed-bridge] auto-save:", {
+          filename,
+          size: buf.byteLength,
+        });
+        window.parent.postMessage(
+          {
+            type: "stirling:save",
+            filename,
+            mimeType,
+            size: buf.byteLength,
+            bytes: buf,
+            timestamp: Date.now(),
+          },
+          "*",
+          [buf],
+        );
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[stirling embed-bridge] auto-save failed:", e);
+      }
+    })();
+  }, [activeFileId, selectors]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
