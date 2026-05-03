@@ -288,8 +288,26 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
             error?: string;
           }
         | undefined;
-      if (!data || data.type !== "stirling:drive-asset") return;
+      if (!data || typeof data !== "object") return;
+      if (data.type !== "stirling:drive-asset") return;
+      // eslint-disable-next-line no-console
+      console.log("[stirling drive-pick] received drive-asset:", {
+        requestId: data.requestId,
+        expectedId: requestIdRef.current,
+        hasBytes: !!data.bytes,
+        bytesType:
+          data.bytes && typeof data.bytes === "object"
+            ? (data.bytes as ArrayBuffer).byteLength + " bytes"
+            : typeof data.bytes,
+        filename: data.filename,
+        mimeType: data.mimeType,
+        error: data.error,
+      });
       if (!requestIdRef.current || data.requestId !== requestIdRef.current) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[stirling drive-pick] requestId mismatch — dropping message",
+        );
         return;
       }
       requestIdRef.current = null;
@@ -300,12 +318,21 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
         console.warn("[stirling drive-pick] embedder error:", data.error);
         return;
       }
-      if (!data.bytes || !(data.bytes instanceof ArrayBuffer)) return;
+      if (!data.bytes || !(data.bytes instanceof ArrayBuffer)) {
+        // eslint-disable-next-line no-console
+        console.warn("[stirling drive-pick] no/invalid bytes payload");
+        return;
+      }
       try {
         const file = new File(
           [data.bytes],
           data.filename || "drive-image.png",
           { type: data.mimeType || "image/png" },
+        );
+        // eslint-disable-next-line no-console
+        console.log(
+          "[stirling drive-pick] feeding file into handleImageChange:",
+          { name: file.name, type: file.type, size: file.size },
         );
         void handleImageChange(file);
       } catch (e) {
@@ -322,6 +349,8 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
     const id = `drive-pick-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     requestIdRef.current = id;
     setDrivePicking(true);
+    // eslint-disable-next-line no-console
+    console.log("[stirling drive-pick] sending request to parent:", id);
     try {
       window.parent.postMessage(
         {
