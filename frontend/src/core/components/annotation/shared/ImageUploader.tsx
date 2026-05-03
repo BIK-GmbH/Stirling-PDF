@@ -348,8 +348,10 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
             placeholder || t("sign.image.placeholder", "Select image file")
           }
           accept="image/*,.svg"
+          value={currentFile}
           onChange={handleImageChange}
           disabled={disabled || isProcessing}
+          clearable
         />
       </PrivateContent>
       {isEmbedded && (
