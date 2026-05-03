@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { FileInput, Text, Stack, Checkbox } from "@mantine/core";
+import React, { useEffect, useRef, useState } from "react";
+import { FileInput, Text, Stack, Checkbox, Button, Group } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { PrivateContent } from "@app/components/shared/PrivateContent";
 import { removeWhiteBackground } from "@app/utils/imageTransparency";
@@ -31,6 +31,18 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
     null,
   );
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // BIK fork: Drive-Picker-Bridge. Wenn wir in einem Iframe laufen
+  // (window !== window.parent), bieten wir einen "Aus Drive einfügen"-
+  // Button an. Klick → postMessage("stirling:request-drive-pick") an
+  // Parent → Parent öffnet Drive-Picker → Parent schickt
+  // "stirling:drive-asset" mit bytes/filename/mimeType zurück → wir
+  // bauen ein File draus und kippen es in die Standard-handleImageChange-
+  // Pipeline. Standalone (kein Embed) bleibt der Button unsichtbar.
+  const isEmbedded =
+    typeof window !== "undefined" && window !== window.parent;
+  const requestIdRef = useRef<string | null>(null);
+  const [drivePicking, setDrivePicking] = useState(false);
 
   const processImage = async (
     imageSource: File | string,
@@ -260,6 +272,73 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   };
 
+  // Hört auf die Antwort des Embedders. Filtert per requestId, damit
+  // konkurrente ImageUploader-Instanzen sich nicht gegenseitig die
+  // Bytes klauen.
+  useEffect(() => {
+    if (!isEmbedded) return;
+    function onParentMessage(ev: MessageEvent) {
+      const data = ev.data as
+        | {
+            type?: string;
+            requestId?: string;
+            bytes?: ArrayBuffer;
+            filename?: string;
+            mimeType?: string;
+            error?: string;
+          }
+        | undefined;
+      if (!data || data.type !== "stirling:drive-asset") return;
+      if (!requestIdRef.current || data.requestId !== requestIdRef.current) {
+        return;
+      }
+      requestIdRef.current = null;
+      setDrivePicking(false);
+
+      if (data.error) {
+        // eslint-disable-next-line no-console
+        console.warn("[stirling drive-pick] embedder error:", data.error);
+        return;
+      }
+      if (!data.bytes || !(data.bytes instanceof ArrayBuffer)) return;
+      try {
+        const file = new File(
+          [data.bytes],
+          data.filename || "drive-image.png",
+          { type: data.mimeType || "image/png" },
+        );
+        void handleImageChange(file);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[stirling drive-pick] file build failed:", e);
+      }
+    }
+    window.addEventListener("message", onParentMessage);
+    return () => window.removeEventListener("message", onParentMessage);
+  }, [isEmbedded]);
+
+  const onPickFromDrive = () => {
+    if (!isEmbedded || disabled || drivePicking) return;
+    const id = `drive-pick-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    requestIdRef.current = id;
+    setDrivePicking(true);
+    try {
+      window.parent.postMessage(
+        {
+          type: "stirling:request-drive-pick",
+          requestId: id,
+          mimeFilter: "image/*",
+        },
+        "*",
+      );
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[stirling drive-pick] postMessage failed:", e);
+      requestIdRef.current = null;
+      setDrivePicking(false);
+    }
+  };
+
   return (
     <Stack gap="sm">
       <PrivateContent>
@@ -273,6 +352,22 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           disabled={disabled || isProcessing}
         />
       </PrivateContent>
+      {isEmbedded && (
+        <Group gap="xs">
+          <Button
+            size="xs"
+            variant="light"
+            color="violet"
+            onClick={onPickFromDrive}
+            loading={drivePicking}
+            disabled={disabled || isProcessing}
+          >
+            {drivePicking
+              ? t("embed.drive.picking", "Drive wird geöffnet…")
+              : t("embed.drive.pickImage", "Aus Drive einfügen")}
+          </Button>
+        </Group>
+      )}
       {allowBackgroundRemoval && (
         <Checkbox
           label={t(
