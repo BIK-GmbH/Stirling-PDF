@@ -1,6 +1,6 @@
 import { ReactNode, useEffect } from "react";
 import { RainbowThemeProvider } from "@app/components/shared/RainbowThemeProvider";
-import { FileContextProvider } from "@app/contexts/FileContext";
+import { FileContextProvider, useFileContext } from "@app/contexts/FileContext";
 import { NavigationProvider } from "@app/contexts/NavigationContext";
 import { ToolRegistryProvider } from "@app/contexts/ToolRegistryProvider";
 import { FilesModalProvider } from "@app/contexts/FilesModalContext";
@@ -42,6 +42,84 @@ function ScarfTrackingInitializer() {
 // Component to run app-level initialization (must be inside AppProviders for context access)
 function AppInitializer() {
   useAppInitialization();
+  return null;
+}
+
+/**
+ * Embedder-Bridge (BIK fork): Wenn Stirling-PDF als iframe in eine
+ * Host-App eingebettet ist, kann diese ein PDF programmatisch
+ * vorabladen und so den Drag-Drop-Schritt überspringen. Erwartet
+ * folgendes postMessage:
+ *
+ *   window.parent → iframe.contentWindow:
+ *     {
+ *       type: "stirling:load",
+ *       bytes: ArrayBuffer,
+ *       filename: string,
+ *       mimeType?: string,   // default "application/pdf"
+ *     }
+ *
+ * Wir fangen das hier ab und reichen die File via FileContext-Action
+ * `addFilesWithOptions` ins normale File-Manager-System ein — gleicher
+ * Pfad wie ein User-Drop oder File-Picker. Optional `selectFiles=true`
+ * damit das geladene File automatisch aktiv ist.
+ *
+ * No-op wenn nicht im iframe (window === window.parent).
+ */
+function EmbedderBridge() {
+  const { actions } = useFileContext();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window === window.parent) return; // standalone, kein Embed
+
+    function onMessage(ev: MessageEvent) {
+      const data = ev.data as
+        | {
+            type?: string;
+            bytes?: ArrayBuffer;
+            filename?: string;
+            mimeType?: string;
+          }
+        | undefined;
+      if (!data || data.type !== "stirling:load") return;
+      if (!data.bytes || !(data.bytes instanceof ArrayBuffer)) return;
+
+      try {
+        const file = new File(
+          [data.bytes],
+          data.filename || "embedded.pdf",
+          { type: data.mimeType || "application/pdf" },
+        );
+        // Optimistic — addFilesWithOptions liefert eine Promise zurück;
+        // bei Fehler loggen wir, blocken aber nicht den Listener.
+        void actions
+          .addFilesWithOptions([file], {
+            selectFiles: true,
+            allowDuplicates: false,
+          })
+          .catch((err: unknown) => {
+            // eslint-disable-next-line no-console
+            console.warn("[stirling embed-bridge] load failed:", err);
+          });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[stirling embed-bridge] could not parse load event:", e);
+      }
+    }
+
+    window.addEventListener("message", onMessage);
+    // Beim Mount: signalisieren dass wir bereit sind. Der Embedder
+    // kann darauf warten statt blind zu schicken — verhindert Race-
+    // Condition wenn Stirling-Bundle noch nicht geladen ist.
+    try {
+      window.parent.postMessage({ type: "stirling:ready" }, "*");
+    } catch {
+      // ignore — postMessage to parent rarely fails, but be defensive
+    }
+    return () => window.removeEventListener("message", onMessage);
+  }, [actions]);
+
   return null;
 }
 
@@ -126,6 +204,7 @@ export function AppProviders({
                 enablePersistence={true}
               >
                 <AppInitializer />
+                <EmbedderBridge />
                 <BrandingAssetManager />
                 <ToolRegistryProvider>
                   <NavigationProvider>
