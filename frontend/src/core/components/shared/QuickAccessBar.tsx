@@ -118,6 +118,13 @@ const QuickAccessBar = forwardRef<HTMLDivElement>((_, ref) => {
   const signButtonRef = useRef<HTMLDivElement>(null);
   const [pendingSignCount, setPendingSignCount] = useState(0);
 
+  // BIK fork: Embed-Detection. Im PDB-Iframe blenden wir Sidebar-Items
+  // aus die entweder Stirling-Plattform-Features sind (Settings/Tours)
+  // oder unsere Drive-Funktionalität duplizieren (Files/Automate).
+  // Siehe docs/architecture/stirling-embed.md für Begründung pro Item.
+  const isEmbedded =
+    typeof window !== "undefined" && window !== window.parent;
+
   // Silently fetch pending sign request count for badge (every 60s)
   useEffect(() => {
     if (!groupSigningEnabled) return;
@@ -719,6 +726,8 @@ const QuickAccessBar = forwardRef<HTMLDivElement>((_, ref) => {
           },
         },
       ].filter((button) => {
+        // BIK fork: hide automate im Embed-Modus
+        if (isEmbedded && button.id === "automate") return false;
         // Filter out buttons for disabled tools
         // 'read' is always available (viewer mode)
         if (button.id === "read") return true;
@@ -735,22 +744,28 @@ const QuickAccessBar = forwardRef<HTMLDivElement>((_, ref) => {
       resetTool,
       handleToolSelect,
       toolAvailability,
+      isEmbedded,
     ],
   );
 
-  const middleButtons: ButtonConfig[] = [
-    {
-      id: "files",
-      name: t("quickAccess.files", "Files"),
-      icon: (
-        <LocalIcon icon="folder-rounded" width="1.25rem" height="1.25rem" />
-      ),
-      isRound: true,
-      size: "md",
-      type: "modal",
-      onClick: handleFilesButtonClick,
-    },
-  ];
+  // BIK fork: middleButtons komplett leer im Embed — "Files" öffnet
+  // Stirlings internen FilesModal mit IndexedDB-Files; das duplicate
+  // unser Drive und verwirrt den User (zeigt nicht Drive-Files).
+  const middleButtons: ButtonConfig[] = isEmbedded
+    ? []
+    : [
+        {
+          id: "files",
+          name: t("quickAccess.files", "Files"),
+          icon: (
+            <LocalIcon icon="folder-rounded" width="1.25rem" height="1.25rem" />
+          ),
+          isRound: true,
+          size: "md",
+          type: "modal",
+          onClick: handleFilesButtonClick,
+        },
+      ];
   //TODO: Activity
   //{
   //  id: 'activity',
@@ -767,42 +782,47 @@ const QuickAccessBar = forwardRef<HTMLDivElement>((_, ref) => {
   const shouldHideSettingsButton =
     config?.enableLogin === false && config?.showSettingsWhenNoLogin === false;
 
-  const bottomButtons: ButtonConfig[] = [
-    {
-      id: "help",
-      name: t("quickAccess.tours", "Tours"),
-      icon: (
-        <LocalIcon icon="explore-rounded" width="1.25rem" height="1.25rem" />
-      ),
-      isRound: true,
-      size: "md",
-      type: "action",
-      onClick: () => {
-        // This will be overridden by the wrapper logic
-      },
-    },
-    ...(shouldHideSettingsButton
-      ? []
-      : [
-          {
-            id: "config",
-            name: t("quickAccess.settings", "Settings"),
-            icon: configButtonIcon ?? (
-              <LocalIcon
-                icon="settings-rounded"
-                width="1.25rem"
-                height="1.25rem"
-              />
-            ),
-            size: "md" as const,
-            type: "modal" as const,
-            onClick: () => {
-              navigate("/settings/overview");
-              setConfigModalOpen(true);
-            },
-          } as ButtonConfig,
-        ]),
-  ];
+  // BIK fork: im Embed-Modus weder Tours noch Settings — beide
+  // sind plattform-spezifisch (PDB hat eigene Tour, Settings liegen
+  // beim Host).
+  const bottomButtons: ButtonConfig[] = isEmbedded
+    ? []
+    : [
+        {
+          id: "help",
+          name: t("quickAccess.tours", "Tours"),
+          icon: (
+            <LocalIcon icon="explore-rounded" width="1.25rem" height="1.25rem" />
+          ),
+          isRound: true,
+          size: "md",
+          type: "action",
+          onClick: () => {
+            // This will be overridden by the wrapper logic
+          },
+        },
+        ...(shouldHideSettingsButton
+          ? []
+          : [
+              {
+                id: "config",
+                name: t("quickAccess.settings", "Settings"),
+                icon: configButtonIcon ?? (
+                  <LocalIcon
+                    icon="settings-rounded"
+                    width="1.25rem"
+                    height="1.25rem"
+                  />
+                ),
+                size: "md" as const,
+                type: "modal" as const,
+                onClick: () => {
+                  navigate("/settings/overview");
+                  setConfigModalOpen(true);
+                },
+              } as ButtonConfig,
+            ]),
+      ];
 
   return (
     <div

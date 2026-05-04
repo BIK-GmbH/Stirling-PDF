@@ -1337,6 +1337,39 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
       },
     };
 
+    // BIK fork: De-Stirlingisierung für Iframe-Embed-Modus.
+    // Tools die im PDB-Pro-Editor-Embed keinen Sinn machen werden hier
+    // entfernt bevor sie in regular/super/linkTools sortiert werden.
+    // Begründung pro Tool siehe docs/architecture/stirling-embed.md
+    // (im honcho-chat-demo Repo).
+    //
+    // - merge/compare: Multi-File-Workflows → Drive macht das besser
+    // - automate/autoRename: Cron/Batch → Plattform-Feature, nicht
+    //   für Single-File-Edit
+    // - showJS: Debug-Tool für eingebettetes JS in PDFs
+    // - dev*: Stirling-Admin-/Setup-Pages (DEVELOPER_TOOLS-Subcategory
+    //   komplett raus)
+    //
+    // Standalone-Stirling (kein Embed) bleibt unverändert.
+    const isEmbedded =
+      typeof window !== "undefined" && window !== window.parent;
+    if (isEmbedded) {
+      const EMBED_HIDDEN_TOOLS = new Set<string>([
+        "merge",
+        "compare",
+        "automate",
+        "autoRename",
+        "showJS",
+        "devApi",
+        "devFolderScanning",
+        "devSsoGuide",
+        "devAirgapped",
+      ]);
+      for (const key of EMBED_HIDDEN_TOOLS) {
+        delete (allTools as Record<string, unknown>)[key];
+      }
+    }
+
     const regularTools = {} as RegularToolRegistry;
     const superTools = {} as SuperToolRegistry;
     const linkTools = {} as LinkToolRegistry;

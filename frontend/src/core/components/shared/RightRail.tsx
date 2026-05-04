@@ -294,30 +294,37 @@ export default function RightRail() {
           }}
           data-tour="right-rail-settings"
         >
-          {renderWithTooltip(
-            <ActionIcon
-              variant="subtle"
-              radius="md"
-              className="right-rail-icon"
-              onClick={toggleTheme}
-            >
-              {themeMode === "dark" ? (
-                <LightModeIcon sx={{ fontSize: "1.5rem" }} />
-              ) : (
-                <DarkModeIcon sx={{ fontSize: "1.5rem" }} />
+          {/* BIK fork: Theme + Language im Embed-Modus ausgeblendet —
+              PDB-Theme propagiert via CSS-Variablen, Sprache kommt aus
+              UserSettings.language. Im Standalone bleiben beide. */}
+          {!(typeof window !== "undefined" && window !== window.parent) && (
+            <>
+              {renderWithTooltip(
+                <ActionIcon
+                  variant="subtle"
+                  radius="md"
+                  className="right-rail-icon"
+                  onClick={toggleTheme}
+                >
+                  {themeMode === "dark" ? (
+                    <LightModeIcon sx={{ fontSize: "1.5rem" }} />
+                  ) : (
+                    <DarkModeIcon sx={{ fontSize: "1.5rem" }} />
+                  )}
+                </ActionIcon>,
+                t("rightRail.toggleTheme", "Toggle Theme"),
+                tooltipPosition,
+                tooltipOffset,
               )}
-            </ActionIcon>,
-            t("rightRail.toggleTheme", "Toggle Theme"),
-            tooltipPosition,
-            tooltipOffset,
-          )}
 
-          <LanguageSelector
-            position="left-start"
-            offset={6}
-            compact
-            tooltip={t("rightRail.language", "Language")}
-          />
+              <LanguageSelector
+                position="left-start"
+                offset={6}
+                compact
+                tooltip={t("rightRail.language", "Language")}
+              />
+            </>
+          )}
 
           {renderWithTooltip(
             <ActionIcon

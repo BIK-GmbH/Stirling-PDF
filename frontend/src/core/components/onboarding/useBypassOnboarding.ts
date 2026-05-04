@@ -51,15 +51,21 @@ export function useBypassOnboarding(): boolean {
     }
   }, [location.search]);
 
+  // BIK fork: im Iframe-Embed wird die komplette Onboarding-Pipeline
+  // (Welcome-Modal, Tour, FirstLogin, WhatsNew) übersprungen — der
+  // User hat bereits die PDB-Tour gesehen und braucht keine zweite.
+  const isEmbedded =
+    typeof window !== "undefined" && window !== window.parent;
+
   useEffect(() => {
     const fromStorage = readStoredBypass();
-    const nextBypass = shouldBypassFromSearch || fromStorage;
+    const nextBypass = isEmbedded || shouldBypassFromSearch || fromStorage;
     setBypassOnboarding(nextBypass);
     if (nextBypass) {
       setStoredBypass(true);
       markOnboardingCompleted();
     }
-  }, [shouldBypassFromSearch]);
+  }, [shouldBypassFromSearch, isEmbedded]);
 
   return bypassOnboarding;
 }
