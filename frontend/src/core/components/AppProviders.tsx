@@ -157,17 +157,38 @@ function EmbedderBridge() {
           data.filename || "embedded.pdf",
           { type: data.mimeType || "application/pdf" },
         );
-        // Optimistic — addFilesWithOptions liefert eine Promise zurück;
-        // bei Fehler loggen wir, blocken aber nicht den Listener.
-        void actions
-          .addFilesWithOptions([file], {
-            selectFiles: true,
-            allowDuplicates: false,
-          })
-          .catch((err: unknown) => {
+        // Bei Version-Switch im Embed-Modus liegt bereits eine
+        // Vorgänger-Version im FileContext. Wir entfernen ALLE
+        // existierenden Files bevor wir die neue laden — sonst
+        // greift `allowDuplicates: false` und Stirling rejected
+        // den Push (gleicher Filename), oder `allowDuplicates: true`
+        // produziert eine wachsende Liste die der User nie clearen
+        // kann (UI dafür ist beim Embed ausgeblendet).
+        //
+        // Beim Initial-Load (kein File da) ist removeFiles ein
+        // No-op → kein Performance-Hit für den Cold-Start-Pfad.
+        void (async () => {
+          try {
+            const existingIds = selectors.getAllFileIds();
+            if (existingIds.length > 0) {
+              await actions.removeFiles(existingIds, false);
+            }
+            await actions.addFilesWithOptions([file], {
+              selectFiles: true,
+              allowDuplicates: true,
+            });
+            // Auto-Save-Watcher würde jetzt fälschlicherweise den
+            // gerade geladenen File als "Änderung" interpretieren
+            // und ihn ans Drive zurückspielen. Wir resetten den
+            // Init-Marker damit der nächste Active-File-Wechsel
+            // wieder als initial erkannt wird.
+            initializedRef.current = false;
+            lastSeenFileIdRef.current = null;
+          } catch (err) {
             // eslint-disable-next-line no-console
             console.warn("[stirling embed-bridge] load failed:", err);
-          });
+          }
+        })();
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn("[stirling embed-bridge] could not parse load event:", e);
@@ -184,7 +205,7 @@ function EmbedderBridge() {
       // ignore — postMessage to parent rarely fails, but be defensive
     }
     return () => window.removeEventListener("message", onMessage);
-  }, [actions]);
+  }, [actions, selectors]);
 
   return null;
 }
