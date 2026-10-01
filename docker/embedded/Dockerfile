@@ -71,6 +71,12 @@ COPY --link --from=app-build --chown=1000:1000 \
      /app/build/libs/restart-helper.jar /restart-helper.jar
 COPY --link --chown=1000:1000 scripts/ /scripts/
 
+# The pre-built base pins its Ubuntu packages to the day it was built; apply the
+# security updates released since, so the image is current on its build day.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 # Fonts go to system dir, root ownership is correct (world-readable)
 COPY app/core/src/main/resources/static/fonts/*.ttf /usr/share/fonts/truetype/
 
