@@ -47,8 +47,10 @@ jobs:
           # the build time without business value here.
           platforms: linux/amd64
           push: true
+          # `latest` only from the deploy branch: a manual run on a test branch
+          # must not replace what consumers of `latest` pull.
           tags: |
-            ghcr.io/bik-gmbh/stirling-pdf-pdb:latest
+            ${{ github.ref == 'refs/heads/feat/postmessage-save-callback' && 'ghcr.io/bik-gmbh/stirling-pdf-pdb:latest' || '' }}
             ghcr.io/bik-gmbh/stirling-pdf-pdb:${{ github.sha }}
           # Layer-cache via the registry — first build is slow (~15 min),
           # subsequent ones reuse most layers and finish in 3-5 min.
